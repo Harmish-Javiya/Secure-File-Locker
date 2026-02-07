@@ -1,0 +1,13 @@
+# Ignore the virtual environment (Crucial!)
+.venv/
+venv/
+__pycache__/
+
+# Ignore your local IDE settings
+.idea/
+.vscode/
+
+# Ignore sensitive data and databases
+data/vault_storage/
+data/locker.db
+*.key
