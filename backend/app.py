@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from config import config
 from extensions import db, jwt, limiter
+from middleware.security import init_security
 import os
 
 
@@ -65,6 +66,9 @@ def create_app(env=None):
     @app.route("/api/health")
     def health():
         return jsonify({"status": "ok", "env": env}), 200
+
+    # Apply all security middleware
+    init_security(app)
 
     return app
 

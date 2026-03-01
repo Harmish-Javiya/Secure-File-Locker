@@ -1,0 +1,28 @@
+# ── Web Framework ─────────────────────────────────────────
+flask==3.0.3
+flask-jwt-extended==4.6.0
+flask-sqlalchemy==3.1.1
+flask-limiter==3.8.0
+
+# ── Database ──────────────────────────────────────────────
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.36
+
+# ── Security & Cryptography ───────────────────────────────
+cryptography==43.0.3
+argon2-cffi==23.1.0
+argon2-cffi-bindings==21.2.0
+
+# ── Authentication ────────────────────────────────────────
+pyotp==2.9.0
+qrcode==7.4.2
+pillow==11.0.0
+
+# ── AWS ───────────────────────────────────────────────────
+boto3==1.35.36
+botocore==1.35.36
+
+# ── Utilities ─────────────────────────────────────────────
+python-dotenv==1.0.1
+werkzeug==3.0.6
+limits==3.13.0
