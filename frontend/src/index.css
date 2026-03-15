@@ -1,13 +1,38 @@
-body {
+/* src/index.css */
+* {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+html, body, #root {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #080808; /* Matches your vault dark theme */
+  color: #e0e0e0;
+  font-family: 'IBM Plex Mono', monospace;
 }
+/* Custom Dark Mode Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #050505; 
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.3); /* Dim amber */
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.6); /* Brighter amber on hover */
+}
+::selection {
+  background: rgba(245, 158, 11, 0.3);
+  color: #fff;
+}
+/* Make all interactive buttons feel physical when clicked */
+  button:active {
+    transform: scale(0.96) !important;
+    transition: transform 0.05s ease !important;
+  }
