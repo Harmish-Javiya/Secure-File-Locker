@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "../App";
 import { authAPI, filesAPI } from "../utils/api";
@@ -339,6 +339,7 @@ export default function Dashboard() {
   const user = auth.user || { username: "Demo User", email: "demo@vault.local", mfa_enabled: false };
   const logout = auth.logout || (() => {});
   const setUser = auth.setUser || (() => {});
+  const navigate = useNavigate();
   const [files, setFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("files");
@@ -349,17 +350,13 @@ export default function Dashboard() {
   const fetchFiles = useCallback(async () => {
     setFilesLoading(true);
     try {
-      const mock = [
-        { id: 1, filename: "vault_report.pdf", file_size: 120000 },
-        { id: 2, filename: "encrypted_notes.txt", file_size: 45000 },
-        { id: 3, filename: "image.png", file_size: 98000 }
-      ];
-      setTimeout(() => {
-        setFiles(mock);
-        setFilesLoading(false);
-      }, 600);
+      const { data } = await filesAPI.list();
+      setFiles(data.data || []);
     } catch (err) {
-      toast.error("Failed to load files");
+      if (err.response?.status !== 401) {
+        toast.error("Failed to load files");
+      }
+    } finally {
       setFilesLoading(false);
     }
   }, []);
@@ -367,8 +364,11 @@ export default function Dashboard() {
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
   const handleLogout = async () => {
-    await logout();
+    try {
+      await logout();
+    } catch (_) {}
     toast("Session terminated", { icon: "🔒" });
+    navigate("/login", { replace: true });
   };
 
   const handleMfaSetup = async () => {
@@ -397,14 +397,17 @@ export default function Dashboard() {
   };
 
   const handleMfaDisable = async () => {
-    const code = window.prompt("Enter your authenticator code to disable MFA:");
-    if (!code) return;
+    const password = window.prompt("Confirm your account password to disable MFA:");
+    if (!password) return;
+  
     try {
-      await authAPI.mfaDisable(code);
+      // Use the authAPI helper you already defined in api.js
+      await authAPI.mfaDisable(password);
+      
       setUser((u) => ({ ...u, mfa_enabled: false }));
       toast.success("MFA disabled");
     } catch (err) {
-      toast.error(err.response?.data?.error || "Invalid code");
+      toast.error(err.response?.data?.error || "Invalid password");
     }
   };
 

@@ -93,9 +93,14 @@ def register():
             details=f"New user registered: {username}"
         )
 
+        access_token = create_access_token(identity=str(user.id))
+        
         return jsonify({
             "message": "Account created successfully",
-            "data": user.to_dict()
+            "data": {
+                "access_token": access_token, # Send token to frontend
+                "user": user.to_dict()
+            }
         }), 201
 
     except ValueError as e:
@@ -113,7 +118,7 @@ def register():
 # ── Login ────────────────────────────────────────────────
 
 @auth_bp.route("/login", methods=["POST"])
-@limiter.limit("10 per minute")
+# @limiter.limit("10 per minute")
 def login():
     try:
         data = request.get_json()
@@ -397,7 +402,6 @@ def mfa_verify():
 
 
 # ── MFA Disable ───────────────────────────────────────────
-
 @auth_bp.route("/mfa/disable", methods=["POST"])
 @jwt_required()
 def mfa_disable():

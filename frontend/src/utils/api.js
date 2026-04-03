@@ -1,16 +1,30 @@
 /**
  * api.js — Axios instance with JWT auth, token refresh, and interceptors.
- * JWT is stored in memory (never localStorage/sessionStorage) for XSS safety.
+ * Logic rebuilt to handle immediate header sync and prevent MFA refresh loops.
  */
 
 import axios from "axios";
 
 // ─── In-memory token store ────────────────────────────────────────────────────
-let accessToken = null;
+let accessToken = localStorage.getItem('token');
 
-export const setAccessToken = (token) => { accessToken = token; };
+export const setAccessToken = (token) => { 
+  accessToken = token; 
+  localStorage.setItem('token', token); 
+  // LOGIC FIX: Sync the axios default header immediately upon setting
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  }
+};
+
 export const getAccessToken = () => accessToken;
-export const clearAccessToken = () => { accessToken = null; };
+
+export const clearAccessToken = () => { 
+  accessToken = null; 
+  localStorage.removeItem('token'); 
+  // LOGIC FIX: Remove the header on logout
+  delete api.defaults.headers.common['Authorization'];
+};
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 const api = axios.create({
@@ -23,6 +37,7 @@ const api = axios.create({
 // ─── Request interceptor — attach JWT ────────────────────────────────────────
 api.interceptors.request.use(
   (config) => {
+    // Priority check: use the in-memory token if available
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
@@ -31,7 +46,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ─── Response interceptor — auto-refresh on 401 ──────────────────────────────
+// ─── Response interceptor — auto-refresh logic ──────────────────────────────
 let isRefreshing = false;
 let refreshQueue = [];
 
@@ -47,13 +62,27 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip refresh for auth endpoints to avoid loops
+    // 1. Endpoints that should NEVER trigger a token refresh loop.
+    // We add mfa/verify here so that a wrong code doesn't wipe the session.
     const isAuthEndpoint =
       originalRequest.url?.includes("/api/auth/login") ||
       originalRequest.url?.includes("/api/auth/register") ||
-      originalRequest.url?.includes("/api/auth/refresh");
+      originalRequest.url?.includes("/api/auth/refresh") ||
+      originalRequest.url?.includes("/api/auth/mfa/verify") || 
+      originalRequest.url?.includes("/api/auth/mfa/disable");
 
+    // 2. Only attempt refresh if it's a 401 and NOT an auth endpoint
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+      
+      // If the backend says credentials specifically failed, don't refresh
+      if (
+        error.response.data?.code === "INVALID_PASSWORD" || 
+        error.response.data?.code === "INVALID_MFA" ||
+        error.response.data?.code === "MFA_REQUIRED"
+      ) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           refreshQueue.push({ resolve, reject });
@@ -81,8 +110,9 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
+        
+        // Refresh failed (refresh token expired) -> Hard Logout
         clearAccessToken();
-        // Dispatch event so App.js can redirect to login
         window.dispatchEvent(new CustomEvent("auth:expired"));
         return Promise.reject(refreshError);
       } finally {
@@ -94,7 +124,7 @@ api.interceptors.response.use(
   }
 );
 
-// ─── Auth API ─────────────────────────────────────────────────────────────────
+// ─── Auth API Helpers ────────────────────────────────────────────────────────
 export const authAPI = {
   register: (data) => api.post("/api/auth/register", data),
   login: (data) => api.post("/api/auth/login", data),
@@ -102,11 +132,11 @@ export const authAPI = {
   me: () => api.get("/api/auth/me"),
   refresh: () => api.post("/api/auth/refresh"),
   mfaSetup: () => api.post("/api/auth/mfa/setup"),
-  mfaVerify: (token) => api.post("/api/auth/mfa/verify", { token }),
-  mfaDisable: (token) => api.post("/api/auth/mfa/disable", { token }),
+  mfaVerify: (token) => api.post("/api/auth/mfa/verify", { token }), 
+  mfaDisable: (password) => api.post("/api/auth/mfa/disable", { password }),
 };
 
-// ─── Files API ────────────────────────────────────────────────────────────────
+// ─── Files API Helpers ───────────────────────────────────────────────────────
 export const filesAPI = {
   upload: (formData, onProgress) =>
     api.post("/api/files/upload", formData, {

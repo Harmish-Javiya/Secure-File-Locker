@@ -299,7 +299,7 @@ export default function Register() {
       const token = data.data?.access_token;
       if (token) {
         setAccessToken(token);
-        const { data: meData } = await (await import("../utils/api")).default.get("/api/auth/me");
+        const { data: meData } = await authAPI.me();
         setUser(meData.data);
         toast.success("Vault credentials created");
         navigate("/dashboard");

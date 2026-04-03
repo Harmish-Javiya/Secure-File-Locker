@@ -18,44 +18,70 @@ export const useAuth = () => {
 // ─── Auth Provider ────────────────────────────────────────────────────────────
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // Start loading as true while we check auth
+  const [loading, setLoading] = useState(true);
 
   const logout = useCallback(async () => {
-    try { await authAPI.logout(); } catch (_) {}
-    clearAccessToken();
-    setUser(null);
+    try { 
+      await authAPI.logout(); 
+    } catch (_) {
+      // Ignore logout errors to ensure local cleanup always happens
+    } finally {
+      clearAccessToken();
+      setUser(null);
+    }
   }, []);
 
   const login = useCallback(async (credentials) => {
+    // 1. Logic: Call the login endpoint
     const { data } = await authAPI.login(credentials);
+    
+    // 2. Logic: If MFA is required, return the response immediately.
+    // This allows Login.jsx to show the MFA input without App.jsx crashing.
+    if (data.code === "MFA_REQUIRED") {
+      return data;
+    }
+
+    // 3. Logic: Only if an access_token is present do we finalize the session
     const token = data.data?.access_token;
-    if (!token) throw new Error("No access token received");
-    setAccessToken(token);
-    const { data: meData } = await authAPI.me();
-    setUser(meData.data);
+    if (token) {
+      setAccessToken(token);
+      const { data: meData } = await authAPI.me();
+      setUser(meData.data);
+    }
+    
     return data;
   }, []);
 
-  // Listen for token expiry from interceptor
+  // Sync state if a token expires elsewhere (e.g., in the interceptor)
   useEffect(() => {
-    const handler = () => { clearAccessToken(); setUser(null); };
+    const handler = () => { 
+      clearAccessToken(); 
+      setUser(null); 
+    };
     window.addEventListener("auth:expired", handler);
     return () => window.removeEventListener("auth:expired", handler);
   }, []);
 
-  // Attempt silent refresh on mount
+  // Logic: Silent initialization on mount
   useEffect(() => {
     const initAuth = async () => {
+      // Check if a token actually exists before hitting the API
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setLoading(false);
+        return; // Prevents 401 errors in console on refresh
+      }
+
       try {
-        // Try to fetch the user profile. If successful, they are logged in.
         const { data } = await authAPI.me();
         setUser(data.data);
       } catch (error) {
-        // If it fails (e.g., no token, expired token), ensure state is clean
+        // If the token is invalid or expired, clear everything
         clearAccessToken();
         setUser(null);
       } finally {
-        setLoading(false); // Stop the loading spinner
+        setLoading(false);
       }
     };
     initAuth();
@@ -68,7 +94,7 @@ function AuthProvider({ children }) {
   );
 }
 
-// ─── Protected Route ──────────────────────────────────────────────────────────
+// ─── Protected Route (Logic Only) ─────────────────────────────────────────────
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -78,7 +104,7 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-// ─── Public Route (redirect if already authed) ────────────────────────────────
+// ─── Public Route (Logic Only) ────────────────────────────────────────────────
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
   
@@ -87,7 +113,7 @@ function PublicRoute({ children }) {
   return children;
 }
 
-// ─── Boot Splash ──────────────────────────────────────────────────────────────
+// ─── Boot Splash (Design Unchanged) ───────────────────────────────────────────
 function BootSplash() {
   return (
     <div style={{
@@ -114,7 +140,7 @@ function BootSplash() {
   );
 }
 
-// ─── App Root ─────────────────────────────────────────────────────────────────
+// ─── App Root (Design Unchanged) ──────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
@@ -122,9 +148,8 @@ export default function App() {
         <Toaster
           position="top-right"
           toastOptions={{
-            // Base style for all toasts
             style: {
-              background: "rgba(10, 10, 10, 0.85)", // Frosted dark glass
+              background: "rgba(10, 10, 10, 0.85)",
               backdropFilter: "blur(16px)",
               WebkitBackdropFilter: "blur(16px)",
               color: "#e0e0e0",
@@ -137,35 +162,27 @@ export default function App() {
               padding: "16px 20px",
               boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.8), inset 0 1px 3px rgba(255, 255, 255, 0.05)",
             },
-            // Specific style for Success toasts
             success: {
               iconTheme: { primary: "#f59e0b", secondary: "#111" },
               style: {
-                borderLeft: "4px solid #f59e0b", // Glowing amber edge
+                borderLeft: "4px solid #f59e0b",
                 boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(245, 158, 11, 0.15)",
               },
             },
-            // Specific style for Error toasts
             error: {
               iconTheme: { primary: "#ef4444", secondary: "#111" },
               style: {
-                borderLeft: "4px solid #ef4444", // Glowing red edge
+                borderLeft: "4px solid #ef4444",
                 boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(239, 68, 68, 0.15)",
               },
             },
           }}
         />
         
-        
         <Routes>
-          {/* Public Routes - Auto-redirect to dashboard if logged in */}
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-
-          {/* Protected Routes - Auto-redirect to login if NOT logged in */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-
-          {/* Catch-all fallbacks */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

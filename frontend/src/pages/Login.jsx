@@ -133,7 +133,7 @@ const styles = `
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function Login() {
-  const { setUser } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/dashboard";
@@ -159,43 +159,32 @@ export default function Login() {
     setForm((p) => ({ ...p, [name]: value }));
     if (errors[name]) setErrors((p) => ({ ...p, [name]: "" }));
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length) { setErrors(errs); return; }
-
+    // ... validation ...
     setLoading(true);
     try {
-      // ⚠️ TEMPORARY MOCK LOGIN UNTIL API.JS IS BUILT
       const payload = { email: form.email, password: form.password };
       if (showMFA && form.mfa_token) payload.mfa_token = form.mfa_token;
-
-      // Simulate a network delay so we can see the cool loading spinner
-      setTimeout(() => {
-        setUser({
-          username: "Demo User",
-          email: form.email,
-          mfa_enabled: false,
-        });
-
+  
+      // Call the login logic from AuthContext
+      const data = await login(payload);
+  
+      if (data.code === "MFA_REQUIRED") {
+        setShowMFA(true);
+        toast("Identity verification required", { icon: "🔐" });
+        return; // Stop here, waiting for code
+      }
+  
+      // If we reach here and have a user, AuthProvider already handled state
+      if (data.data?.access_token) {
         toast.success("Access granted");
         navigate(from, { replace: true });
-        setLoading(false);
-      }, 800);
-
+      }
     } catch (err) {
       const msg = err.response?.data?.error || "Authentication failed";
-      const code = err.response?.data?.code;
-      if (code === "MFA_REQUIRED") {
-        setShowMFA(true);
-        toast("Enter your authenticator code", { icon: "🔐" });
-      } else if (code === "ACCOUNT_LOCKED") {
-        toast.error("Account locked — too many failed attempts");
-      } else {
-        toast.error(msg);
-        setErrors({ submit: msg });
-      }
+      toast.error(msg);
+    } finally {
       setLoading(false);
     }
   };

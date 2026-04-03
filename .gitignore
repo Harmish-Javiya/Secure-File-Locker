@@ -1,0 +1,21 @@
+# ─── BACKEND (Python/Flask) ──────────────────────────────────────
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/*.py[cod]
+
+# ─── FRONTEND (React/Vite) ───────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+frontend/.env*.local
+
+# ─── SYSTEM & EDITORS ───────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp
+Thumbs.db

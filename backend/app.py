@@ -1,12 +1,18 @@
 from flask import Flask, jsonify
+from flask_cors import CORS  # Import remains at the top
 from config import config
 from extensions import db, jwt, limiter
 from middleware.security import init_security
 import os
 
+# REMOVED: The extra app = Flask(__name__) and CORS(app) that were out here
 
 def create_app(env=None):
     app = Flask(__name__)
+
+    # --- 1. CONFIGURE CORS HERE ---
+    # This allows your React app on 5173 to communicate with this Flask app
+    CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
 
     # Load config
     env = env or os.getenv("FLASK_ENV", "development")
@@ -68,6 +74,7 @@ def create_app(env=None):
         return jsonify({"status": "ok", "env": env}), 200
 
     # Apply all security middleware
+    # NOTE: If CORS still fails after this, check security.py for header conflicts
     init_security(app)
 
     return app
@@ -78,4 +85,5 @@ if __name__ == "__main__":
     # Create tables
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=5000, debug=app.config["DEBUG"])
+    # Ensure port 5000 is used
+    app.run(host="0.0.0.0", port=5000, debug=app.config.get("DEBUG", True))
