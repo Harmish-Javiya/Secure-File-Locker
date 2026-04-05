@@ -1,8 +1,9 @@
 from flask import Flask, jsonify
-from flask_cors import CORS  # Import remains at the top
+from flask_cors import CORS 
 from config import config
 from extensions import db, jwt, limiter
 from middleware.security import init_security
+from datetime import timedelta
 import os
 
 # REMOVED: The extra app = Flask(__name__) and CORS(app) that were out here
@@ -17,6 +18,8 @@ def create_app(env=None):
     # Load config
     env = env or os.getenv("FLASK_ENV", "development")
     app.config.from_object(config[env])
+    app.config["MAX_CONTENT_LENGTH"] = None
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
 
     # Initialize extensions
     db.init_app(app)

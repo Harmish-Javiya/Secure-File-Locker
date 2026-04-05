@@ -30,7 +30,7 @@ export const clearAccessToken = () => {
 const api = axios.create({
   baseURL: "http://localhost:5000",
   withCredentials: true,
-  timeout: 30000,
+  timeout: 0,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -138,22 +138,36 @@ export const authAPI = {
 
 // ─── Files API Helpers ───────────────────────────────────────────────────────
 export const filesAPI = {
-  upload: (formData, onProgress) =>
-    api.post("/api/files/upload", formData, {
+  list: () => api.get("/api/files/"),
+  download: (id) =>
+    api.get(`/api/files/download/${id}`, { responseType: "blob" }),
+
+  delete: (id) => {
+    if (!id) return Promise.reject("No ID provided");
+    return api.delete(`/api/files/delete/${id}`); 
+  },
+
+  extendSession: () => api.post("/api/files/upload/extend-session"),
+
+  upload: (formData, onProgress) => {
+    const isInstant = formData.get("instant_encrypt") === "true";
+    return api.post("/api/files/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      responseType: isInstant ? "blob" : "json", 
+      timeout: 0,
       onUploadProgress: (e) => {
         if (onProgress && e.total) {
           onProgress(Math.round((e.loaded / e.total) * 100));
         }
       },
-    }),
-  list: () => api.get("/api/files/"),
-  download: (id) =>
-    api.get(`/api/files/download/${id}`, { responseType: "blob" }),
-  delete: (id) => api.delete(`/api/files/delete/${id}`),
+    });
+  },
+
   share: (id, expiresInHours = 24) =>
     api.post(`/api/files/share/${id}`, { expires_in_hours: expiresInHours }),
+
   getShared: (token) => api.get(`/api/files/shared/${token}`),
+
   getFile: (id) => api.get(`/api/files/${id}`),
 };
 

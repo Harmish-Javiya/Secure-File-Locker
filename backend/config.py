@@ -48,7 +48,7 @@ class Config:
     MASTER_ENCRYPTION_KEY = os.getenv("MASTER_ENCRYPTION_KEY")
 
     # ── File Upload ───────────────────────────────────
-    MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB max file size
+    MAX_CONTENT_LENGTH = 50 * 1024 * 1024 * 1024   # 100MB max file size
     ALLOWED_EXTENSIONS = {
         "pdf", "txt", "png", "jpg", "jpeg",
         "docx", "xlsx", "zip", "csv"

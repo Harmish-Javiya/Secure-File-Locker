@@ -15,6 +15,10 @@ class File(db.Model):
     extension       = db.Column(db.String(20), nullable=False)
     s3_key          = db.Column(db.String(500), nullable=False, unique=True)
     is_encrypted    = db.Column(db.Boolean, default=True)
+    
+    # NEW: Stores 'AES-256-GCM', 'ChaCha20', or 'Fernet'
+    encryption_algo = db.Column(db.String(50), default="AES-256-GCM", nullable=False)
+    
     sha256_hash     = db.Column(db.String(64), nullable=False)
     encryption_iv   = db.Column(db.String(500), nullable=False)
     is_shared       = db.Column(db.Boolean, default=False)
@@ -54,6 +58,7 @@ class File(db.Model):
             "mime_type": self.mime_type,
             "extension": self.extension,
             "is_encrypted": self.is_encrypted,
+            "encryption_algo": self.encryption_algo or "AES-256-GCM", # Updated to include algo
             "is_shared": self.is_shared,
             "sha256_hash": self.sha256_hash,
             "created_at": self.created_at.isoformat(),
@@ -83,5 +88,5 @@ class AuditLog(db.Model):
             "ip_address": self.ip_address,
             "status": self.status,
             "details": self.details,
-            "timestamp": self.timestamp.isoformat()
+            "timestamp": self.timestamp.isoformat() 
         }
