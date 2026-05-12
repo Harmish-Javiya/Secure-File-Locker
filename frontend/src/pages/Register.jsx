@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { authAPI, setAccessToken } from "../utils/api";
+// NEW: Import our correct API tools
+import { authAPI, setTokens } from "../utils/api";
 import { useAuth } from "../App";
 
 // ─── Password strength checker ────────────────────────────────────────────────
 function checkStrength(password) {
   const checks = {
-    length:  { label: "12+ characters",      pass: password.length >= 12 },
+    length:  { label: "12+ characters",     pass: password.length >= 12 },
     upper:   { label: "Uppercase letter",     pass: /[A-Z]/.test(password) },
     lower:   { label: "Lowercase letter",     pass: /[a-z]/.test(password) },
     digit:   { label: "Number",               pass: /\d/.test(password) },
@@ -284,6 +285,7 @@ export default function Register() {
     if (errors[name]) setErrors((p) => ({ ...p, [name]: "" }));
   };
 
+  // NEW: Updated Submit Handler
   const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
@@ -291,19 +293,26 @@ export default function Register() {
 
     setLoading(true);
     try {
+      // 1. Call the backend register route
       const { data } = await authAPI.register({
         username: form.username,
         email: form.email,
         password: form.password,
       });
-      const token = data.data?.access_token;
-      if (token) {
-        setAccessToken(token);
-        const { data: meData } = await (await import("../utils/api")).default.get("/api/auth/me");
-        setUser(meData.data);
+      
+      // 2. See if the backend gave us tokens instantly
+      const access = data.data?.access_token;
+      const refresh = data.data?.refresh_token;
+
+      if (access && refresh) {
+        // If it did, securely set them and log the user in
+        setTokens(access, refresh);
+        const meRes = await authAPI.getMe();
+        setUser(meRes.data.data);
         toast.success("Vault credentials created");
         navigate("/dashboard");
       } else {
+        // Otherwise, send them to the login screen to sign in normally
         toast.success("Registration successful — please log in");
         navigate("/login");
       }

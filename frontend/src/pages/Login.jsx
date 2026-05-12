@@ -133,7 +133,8 @@ const styles = `
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function Login() {
-  const { setUser } = useAuth();
+  // NEW LOGIC: We pull the "login" function from App.jsx instead of "setUser"
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/dashboard";
@@ -167,24 +168,14 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // ⚠️ TEMPORARY MOCK LOGIN UNTIL API.JS IS BUILT
-      const payload = { email: form.email, password: form.password };
-      if (showMFA && form.mfa_token) payload.mfa_token = form.mfa_token;
+      // NEW LOGIC: This actually hits Harmish's Python Backend!
+      await login(form.email, form.password, form.mfa_token);
 
-      // Simulate a network delay so we can see the cool loading spinner
-      setTimeout(() => {
-        setUser({
-          username: "Demo User",
-          email: form.email,
-          mfa_enabled: false,
-        });
-
-        toast.success("Access granted");
-        navigate(from, { replace: true });
-        setLoading(false);
-      }, 800);
-
+      toast.success("Access granted");
+      navigate(from, { replace: true });
+      setLoading(false);
     } catch (err) {
+      // Your perfect error handling code remains exactly the same
       const msg = err.response?.data?.error || "Authentication failed";
       const code = err.response?.data?.code;
       if (code === "MFA_REQUIRED") {

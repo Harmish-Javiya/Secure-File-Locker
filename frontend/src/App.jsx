@@ -1,175 +1,100 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import React, { createContext, useContext, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import { authAPI, setAccessToken, clearAccessToken } from "./utils/api";
+import { authAPI, setTokens, clearTokens } from "./utils/api";
+
+// We will build these pages next!
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import Landing from "./pages/Landing";
 
-// ─── Auth Context ─────────────────────────────────────────────────────────────
-export const AuthContext = createContext(null);
+// 1. Create the Auth Context (Global State)
+const AuthContext = createContext(null);
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
-  return ctx;
-};
+// Custom hook so any component (like your Dashboard) can access auth data
+export const useAuth = () => useContext(AuthContext);
 
-// ─── Auth Provider ────────────────────────────────────────────────────────────
-function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // Start loading as true while we check auth
-
-  const logout = useCallback(async () => {
-    try { await authAPI.logout(); } catch (_) {}
-    clearAccessToken();
-    setUser(null);
-  }, []);
-
-  const login = useCallback(async (credentials) => {
-    const { data } = await authAPI.login(credentials);
-    const token = data.data?.access_token;
-    if (!token) throw new Error("No access token received");
-    setAccessToken(token);
-    const { data: meData } = await authAPI.me();
-    setUser(meData.data);
-    return data;
-  }, []);
-
-  // Listen for token expiry from interceptor
-  useEffect(() => {
-    const handler = () => { clearAccessToken(); setUser(null); };
-    window.addEventListener("auth:expired", handler);
-    return () => window.removeEventListener("auth:expired", handler);
-  }, []);
-
-  // Attempt silent refresh on mount
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        // Try to fetch the user profile. If successful, they are logged in.
-        const { data } = await authAPI.me();
-        setUser(data.data);
-      } catch (error) {
-        // If it fails (e.g., no token, expired token), ensure state is clean
-        clearAccessToken();
-        setUser(null);
-      } finally {
-        setLoading(false); // Stop the loading spinner
-      }
-    };
-    initAuth();
-  }, []);
-
-  return (
-    <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-// ─── Protected Route ──────────────────────────────────────────────────────────
+// 2. Protected Route Component (Security Feature)
+// This aggressively kicks unauthenticated users back to the login screen
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
-  const location = useLocation();
-
-  if (loading) return <BootSplash />;
-  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  const auth = useAuth();
+  if (!auth.user) {
+    return <Navigate to="/login" replace />;
+  }
   return children;
 }
 
-// ─── Public Route (redirect if already authed) ────────────────────────────────
-function PublicRoute({ children }) {
-  const { user, loading } = useAuth();
-  
-  if (loading) return <BootSplash />;
-  if (user) return <Navigate to="/dashboard" replace />;
-  return children;
-}
-
-// ─── Boot Splash ──────────────────────────────────────────────────────────────
-function BootSplash() {
-  return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#0a0a0a",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "column",
-      gap: "20px",
-    }}>
-      <div style={{
-        width: "48px", height: "48px",
-        border: "2px solid #1a1a1a",
-        borderTop: "2px solid #f59e0b",
-        borderRadius: "50%",
-        animation: "spin 0.8s linear infinite",
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <span style={{ color: "#444", fontFamily: "monospace", fontSize: "12px", letterSpacing: "0.2em" }}>
-        INITIALIZING VAULT
-      </span>
-    </div>
-  );
-}
-
-// ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const [user, setUser] = useState(null);
+
+  // 3. The Central Login Function
+  const login = async (email, password, mfa_token) => {
+    // A. Hit the backend login route
+    const res = await authAPI.login({ email, password, mfa_token });
+    const { access_token, refresh_token } = res.data.data;
+    
+    // B. Securely store tokens IN MEMORY (Prevents XSS attacks)
+    setTokens(access_token, refresh_token);
+    
+    // C. Fetch the user's secure profile data
+    const meRes = await authAPI.getMe();
+    setUser(meRes.data.data);
+  };
+
+  // 4. The Central Logout Function
+  const logout = async () => {
+    try {
+      // Tell the backend to invalidate the token
+      await authAPI.logout();
+    } catch (err) {
+      console.error("Logout error", err);
+    } finally {
+      // Wipe the memory and state
+      clearTokens();
+      setUser(null);
+    }
+  };
+
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Toaster
-          position="top-right"
+    <AuthContext.Provider value={{ user, setUser, login, logout }}>
+      <BrowserRouter>
+        {/* Elite Cyber-Themed Toaster for Notifications */}
+        <Toaster 
+          position="top-right" 
           toastOptions={{
-            // Base style for all toasts
             style: {
-              background: "rgba(10, 10, 10, 0.85)", // Frosted dark glass
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              color: "#e0e0e0",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "12px",
-              fontWeight: "500",
-              letterSpacing: "0.05em",
-              borderRadius: "12px",
-              padding: "16px 20px",
-              boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.8), inset 0 1px 3px rgba(255, 255, 255, 0.05)",
+              background: '#0a0a0a',
+              color: '#e0e0e0',
+              border: '1px solid #333',
+              fontFamily: 'IBM Plex Mono, monospace',
+              fontSize: '12px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.8)'
             },
-            // Specific style for Success toasts
-            success: {
-              iconTheme: { primary: "#f59e0b", secondary: "#111" },
-              style: {
-                borderLeft: "4px solid #f59e0b", // Glowing amber edge
-                boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(245, 158, 11, 0.15)",
-              },
-            },
-            // Specific style for Error toasts
-            error: {
-              iconTheme: { primary: "#ef4444", secondary: "#111" },
-              style: {
-                borderLeft: "4px solid #ef4444", // Glowing red edge
-                boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(239, 68, 68, 0.15)",
-              },
-            },
-          }}
+            success: { iconTheme: { primary: '#22c55e', secondary: '#0a0a0a' } },
+            error: { iconTheme: { primary: '#ef4444', secondary: '#0a0a0a' } }
+          }} 
         />
         
-        
         <Routes>
-          {/* Public Routes - Auto-redirect to dashboard if logged in */}
-          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-
-          {/* Protected Routes - Auto-redirect to login if NOT logged in */}
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-
-          {/* Catch-all fallbacks */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          {/* Default Route redirects to Dashboard (which protects itself) */}
+          <Route path="/" element={<Landing />} />
+          
+          {/* Public Routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          
+          {/* Secure Routes */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
         </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+      </BrowserRouter>
+    </AuthContext.Provider>
   );
 }

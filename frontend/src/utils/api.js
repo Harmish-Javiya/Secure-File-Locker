@@ -1,26 +1,37 @@
-/**
- * api.js — Axios instance with JWT auth, token refresh, and interceptors.
- * JWT is stored in memory (never localStorage/sessionStorage) for XSS safety.
- */
-
 import axios from "axios";
 
-// ─── In-memory token store ────────────────────────────────────────────────────
+const BASE_URL = "http://localhost:5000/api";
+
+// ==========================================
+// 1. IN-MEMORY TOKEN STORAGE 
+// ==========================================
 let accessToken = null;
+let refreshToken = null;
 
-export const setAccessToken = (token) => { accessToken = token; };
-export const getAccessToken = () => accessToken;
-export const clearAccessToken = () => { accessToken = null; };
+// 👇 THIS IS THE EXACT LINE YOUR APP WAS LOOKING FOR! 👇
+export const setTokens = (access, refresh) => {
+  accessToken = access;
+  refreshToken = refresh;
+};
 
-// ─── Axios instance ───────────────────────────────────────────────────────────
+export const clearTokens = () => {
+  accessToken = null;
+  refreshToken = null;
+};
+
+// ==========================================
+// 2. AXIOS INSTANCE SETUP
+// ==========================================
 const api = axios.create({
-  baseURL: "http://localhost:5000",
-  withCredentials: true,
-  timeout: 30000,
-  headers: { "Content-Type": "application/json" },
+  baseURL: BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-// ─── Request interceptor — attach JWT ────────────────────────────────────────
+// ==========================================
+// 3. REQUEST INTERCEPTOR
+// ==========================================
 api.interceptors.request.use(
   (config) => {
     if (accessToken) {
@@ -31,62 +42,32 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ─── Response interceptor — auto-refresh on 401 ──────────────────────────────
-let isRefreshing = false;
-let refreshQueue = [];
-
-const processQueue = (error, token = null) => {
-  refreshQueue.forEach(({ resolve, reject }) =>
-    error ? reject(error) : resolve(token)
-  );
-  refreshQueue = [];
-};
-
+// ==========================================
+// 4. RESPONSE INTERCEPTOR
+// ==========================================
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip refresh for auth endpoints to avoid loops
-    const isAuthEndpoint =
-      originalRequest.url?.includes("/api/auth/login") ||
-      originalRequest.url?.includes("/api/auth/register") ||
-      originalRequest.url?.includes("/api/auth/refresh");
-
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          refreshQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
-      }
-
+    if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      isRefreshing = true;
 
       try {
-        const { data } = await axios.post(
-          "http://localhost:5000/api/auth/refresh",
-          {},
-          { withCredentials: true }
-        );
-        const newToken = data.data?.access_token;
-        setAccessToken(newToken);
-        processQueue(null, newToken);
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        const res = await axios.post(`${BASE_URL}/auth/refresh`, null, {
+          headers: { Authorization: `Bearer ${refreshToken}` },
+        });
+
+        const newAccessToken = res.data.data.access_token;
+        accessToken = newAccessToken; 
+
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);
+        
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        clearAccessToken();
-        // Dispatch event so App.js can redirect to login
-        window.dispatchEvent(new CustomEvent("auth:expired"));
+        clearTokens();
+        window.location.href = "/login";
         return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
       }
     }
 
@@ -94,37 +75,31 @@ api.interceptors.response.use(
   }
 );
 
-// ─── Auth API ─────────────────────────────────────────────────────────────────
+// ==========================================
+// 5. AUTHENTICATION API METHODS
+// ==========================================
 export const authAPI = {
-  register: (data) => api.post("/api/auth/register", data),
-  login: (data) => api.post("/api/auth/login", data),
-  logout: () => api.post("/api/auth/logout"),
-  me: () => api.get("/api/auth/me"),
-  refresh: () => api.post("/api/auth/refresh"),
-  mfaSetup: () => api.post("/api/auth/mfa/setup"),
-  mfaVerify: (token) => api.post("/api/auth/mfa/verify", { token }),
-  mfaDisable: (token) => api.post("/api/auth/mfa/disable", { token }),
+  register: (data) => api.post("/auth/register", data),
+  login: (data) => api.post("/auth/login", data),
+  logout: () => api.post("/auth/logout"),
+  getMe: () => api.get("/auth/me"),
+  mfaSetup: () => api.post("/auth/mfa/setup"),
+  mfaVerify: (token) => api.post("/auth/mfa/verify", { token }),
+  mfaDisable: (token) => api.post("/auth/mfa/disable", { token }),
 };
 
-// ─── Files API ────────────────────────────────────────────────────────────────
+// ==========================================
+// 6. FILE VAULT API METHODS
+// ==========================================
 export const filesAPI = {
-  upload: (formData, onProgress) =>
-    api.post("/api/files/upload", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      onUploadProgress: (e) => {
-        if (onProgress && e.total) {
-          onProgress(Math.round((e.loaded / e.total) * 100));
-        }
-      },
-    }),
-  list: () => api.get("/api/files/"),
-  download: (id) =>
-    api.get(`/api/files/download/${id}`, { responseType: "blob" }),
-  delete: (id) => api.delete(`/api/files/delete/${id}`),
-  share: (id, expiresInHours = 24) =>
-    api.post(`/api/files/share/${id}`, { expires_in_hours: expiresInHours }),
-  getShared: (token) => api.get(`/api/files/shared/${token}`),
-  getFile: (id) => api.get(`/api/files/${id}`),
+  upload: (formData) => api.post("/files/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" }
+  }),
+  list: () => api.get("/files/"),
+  download: (id) => api.get(`/files/download/${id}`, { responseType: "blob" }),
+  delete: (id) => api.delete(`/files/delete/${id}`),
+  share: (id, hours) => api.post(`/files/share/${id}`, { expires_in_hours: hours }),
+  getShared: (token) => api.get(`/files/shared/${token}`),
 };
 
 export default api;
